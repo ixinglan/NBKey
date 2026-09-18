@@ -8,6 +8,16 @@ macOS 的键盘快捷键只能绑「键盘组合」。但有些操作，用**鼠
 NBKey 是一个纯菜单栏（不出现在 Dock）的小工具，它**拦截**你指定的组合键/鼠标键，
 然后代为执行一个系统快捷键。不替代系统设置，只是补上系统本身组合不出来的那些操作。
 
+## 下载
+
+到 [Releases](https://github.com/ixinglan/NBKey/releases/latest) 下载 `NBKey-x.y.z.dmg`，
+打开后把 **NBKey.app** 拖进「应用程序」即可。
+
+安装包为**通用二进制**（Apple Silicon + Intel），已用 Developer ID 签名并完成 Apple 公证，
+双击即可打开。DMG 附带 `.sha256` 校验文件。
+
+要求 **macOS 14.0 (Sonoma)** 或更高。
+
 ---
 
 ## 目录
@@ -20,6 +30,7 @@ NBKey 是一个纯菜单栏（不出现在 Dock）的小工具，它**拦截**�
 - [六、常见问题](#六常见问题)
 - [七、技术实现](#七技术实现)
 - [八、构建与自检](#八构建与自检)
+- [九、发布流程](#九发布流程)
 
 ---
 
@@ -40,7 +51,11 @@ NBKey 是一个纯菜单栏（不出现在 Dock）的小工具，它**拦截**�
 
 ## 二、安装与首次使用
 
-1. 把 `NBKey.app` 拖进「应用程序」并打开（首次打开若被拦截，在「系统设置 › 隐私与安全性」里放行）。
+1. 下载 DMG（见上），打开后把 `NBKey.app` 拖进「应用程序」并启动。
+   - 正式版已签名并公证，双击即可打开。
+   - **若提示「无法验证开发者」**（自行构建、或拿到未公证的包），执行一次
+     `xattr -dr com.apple.quarantine /Applications/NBKey.app`，
+     或按住 Control 点击图标 → 「打开」。
 2. 首次启动会请求**辅助功能（Accessibility）权限** —— 这是 macOS 对「监听并拦截全局键鼠事件」的硬性要求，
    没有它任何组合都拦不住。
    - 路径：**系统设置 › 隐私与安全性 › 辅助功能** → 勾选 NBKey。
@@ -48,6 +63,9 @@ NBKey 是一个纯菜单栏（不出现在 Dock）的小工具，它**拦截**�
 3. 菜单栏出现 NBKey 图标即表示已就绪。状态栏会显示「引擎运行中」。
 
 > 应用没有 Dock 图标。所有操作都从菜单栏图标进入：**设置…** / **检查权限并重试引擎** / **打开诊断日志** / **退出**。
+
+> ⚠️ **权限是跟签名绑定的**。换了签名方式（例如从自行构建的开发签名换成正式版签名、
+> 或换了证书重新签名）之后，辅助功能里会认成一个「新的」应用，需要重新勾选一次。
 
 ---
 
@@ -380,6 +398,9 @@ NBKey 是 `LSUIElement` 应用，**系统不会自动为它挂标准快捷键** 
 
 ### 构建
 
+日常开发（Debug，只编本机架构；**必须用开发签名，不要用 ad-hoc** ——
+辅助功能权限是按签名绑定的，adhoc 签名每次构建都会让授权失效）：
+
 ```bash
 cd KeyLayer
 xcodebuild -project KeyLayer.xcodeproj -target KeyLayer -configuration Debug build \
@@ -388,11 +409,34 @@ xcodebuild -project KeyLayer.xcodeproj -target KeyLayer -configuration Debug bui
   CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=<你的 Team ID>
 ```
 
-产物在 `KeyLayer/build/Debug/NBKey.app`。
+> 本机（Xcode 26 / macOS SDK 26 / Apple Silicon）完整的多架构 Debug 构建会因 `ONLY_ACTIVE_ARCH` 冲突失败，
+> 上面这组参数是验证过的可用组合。
 
-> 本机（Xcode 26 / macOS SDK 26 / Apple Silicon）完整的多架构构建会因 `ONLY_ACTIVE_ARCH` 冲突失败，
-> 上面这组参数是验证过的可用组合。**必须用开发签名，不要用 ad-hoc** ——
-> 辅助功能权限是按签名绑定的，adhoc 签名每次构建都会让授权失效。
+打发布包（Release + 通用二进制 + 签名 + 公证 + DMG）不用记这一长串命令，用脚本：
+
+```bash
+# 只签名（ad-hoc，任何人可跑；用户首次打开需去隔离）
+./scripts/build-release.sh 1.0.0 ./dist
+
+# 用 Developer ID 正式签名
+SIGN_IDENTITY="Developer ID Application: <你的名字> (<TEAMID>)" \
+  ./scripts/build-release.sh 1.0.0 ./dist
+
+# 正式签名 + 公证（需要 Apple ID 与 App 专用密码）
+SIGN_IDENTITY="Developer ID Application: <你的名字> (<TEAMID>)" \
+  APPLE_ID=you@example.com APPLE_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx APPLE_TEAM_ID=<TEAMID> \
+  ./scripts/build-release.sh 1.0.0 ./dist
+```
+
+脚本按「构建 → 校验 → 签名 → 公证 App → 打 DMG → 公证 DMG → 校验」的顺序执行，**任一步失败即中止**，
+且带了几条断言，专防「静默发出一个坏包」：
+
+- 产物里的版本号必须等于传入的版本号（防注入链路断掉后带着旧版本号发布）；
+- 架构切片必须齐全（`lipo -archs` 实查，不是看参数）；
+- 签名必须带 Hardened Runtime 标志与安全时间戳（缺任一项公证必失败，但 `codesign` 不会报错）；
+- entitlements 必须写入产物（否则 dlopen SkyLight 会被 library validation 拦死，
+  表现是「能装、但一切都不工作」）；
+- DMG 要**真挂载一次**，确认里面确实有 app 和 `Applications` 软链，且版本号正确。
 
 ### 自检
 
@@ -453,6 +497,71 @@ printf 'ui'    > "$L/selftest.request" && open -n KeyLayer/build/Debug/NBKey.app
 | ⌘Q | ✅ 进程真实退出（日志无失败行 + 无崩溃报告 + 仅剩用户自己的实例） |
 | 界面快照 | ✅ 6 组 14 张，补底后残留透明像素 0 |
 | 规则文件未被自检污染 | ✅ `rules.json` md5 前后一致 |
+
+---
+
+## 九、发布流程
+
+发布会话：推一个 `v*` 标签，GitHub Actions 自动构建、签名、公证、打包 DMG 并创建 Release。
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+### 流水线做了什么
+
+`.github/workflows/release.yml` 在 **`macos-26`** runner 上跑（默认 Xcode 26.6，与本机同版本），
+步骤：检出 → 存档工具链信息 → 解析版本号 → 导入证书 → 准备公证凭据 →
+调用 `scripts/build-release.sh` → 上传 artifact → 创建/更新 Release。
+
+几个刻意的选择：
+
+- **版本号来自 tag**：`CFBundleShortVersionString` 由 tag 注入（`v1.0.0` → `1.0.0`），
+  `CFBundleVersion` 用 CI 的运行序号（单调递增）。不依赖手改文件，也就不会出现「tag 是 1.2.0、app 里写着 1.0」。
+- **签名挪出 xcodebuild**：工程里是 `CODE_SIGN_STYLE=Automatic`，CI 上没有开发者账号会直接失败。
+  改成构建时 `CODE_SIGNING_ALLOWED=NO`、构建完自己 `codesign`，本地与 CI 因此能跑**同一份脚本**。
+- **App 与 DMG 都公证 + staple**：只公证 DMG 的话，用户把 app 拖出来之后那张票据并不跟随，
+  离线环境下 Gatekeeper 仍会拦。
+- **用系统自带 `hdiutil` 而不是 `create-dmg`**：少一个 brew 依赖、少一两分钟，换来确定性。
+
+### 需要配置的 Secrets
+
+不配也能跑（自动降级为 ad-hoc 签名），但产物会带 Gatekeeper 警告。配齐后双击即开：
+
+| Secret | 说明 |
+| --- | --- |
+| `BUILD_CERTIFICATE_BASE64` | `Developer ID Application` 证书导出的 `.p12`，base64 后的内容 |
+| `P12_PASSWORD` | 导出 `.p12` 时设的密码 |
+| `KEYCHAIN_PASSWORD` | 任意随机串，仅用于 CI 里的临时钥匙串 |
+| `APPLE_ID` | Apple ID 邮箱 |
+| `APPLE_APP_PASSWORD` | [appleid.apple.com](https://appleid.apple.com) 生成的 App 专用密码 |
+| `APPLE_TEAM_ID` | 团队 ID（本仓库为 `3RW8JYPKDG`） |
+
+<details>
+<summary>导出 p12 与生成 base64 的命令</summary>
+
+```bash
+# 1. 从钥匙串导出 Developer ID Application 证书（含私钥）
+#    图形界面：钥匙串访问 → 我的证书 → 右键「Developer ID Application: …」→ 导出 → 存为 .p12 并设密码
+#    命令行（会提示输入钥匙串密码）：
+security export -t identities -f pkcs12 -P '<p12密码>' \
+  -o /tmp/nbkey-devid.p12
+
+# 2. base64 编码后粘到 GitHub Secrets
+base64 -i /tmp/nbkey-devid.p12 | pbcopy
+rm -P /tmp/nbkey-devid.p12   # 用完立刻销毁，别留在磁盘上
+```
+
+也可以用 App Store Connect API Key 代替 Apple ID 那三项：
+`APPLE_API_KEY_P8`（.p8 文件 base64）、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER_ID`。
+
+</details>
+
+### 重发同一个版本
+
+改了说明、或先发了 ad-hoc 版之后补上证书想重签，不用删 tag：
+到 Actions 手动触发 `Release` 工作流、填上目标 tag，脚本会切到该 tag 的代码重新构建，
+并以 `--clobber` 覆盖 Release 资产。
 
 ---
 

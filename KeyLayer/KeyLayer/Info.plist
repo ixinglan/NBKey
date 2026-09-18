@@ -8,10 +8,13 @@
 	<string>NBKey</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.nbkey.NBKey</string>
+	<!-- 版本号从构建设置注入（pbxproj 里的 MARKETING_VERSION / CURRENT_PROJECT_VERSION）。
+	     CI 只要在 xcodebuild 命令行上传 MARKETING_VERSION=v1.2.3，产物里的版本号就跟着变，
+	     不必再去改源码 —— 单一事实来源，也避免"tag 是 1.2.3 但 app 里写着 1.0"这种错配。 -->
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleExecutable</key>

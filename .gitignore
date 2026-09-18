@@ -12,6 +12,10 @@ DerivedData/
 *.dSYM
 *.dSYM.zip
 
+# 发布产物（scripts/build-release.sh 的输出目录）
+dist/
+dist-*/
+
 # Xcode 用户私有设置：窗口布局、断点、打开的标签页都是"各人各机"的，
 # 进仓库只会制造无意义的冲突
 xcuserdata/

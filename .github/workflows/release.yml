@@ -1,0 +1,213 @@
+name: Release
+
+# 什么时候跑：
+#   - 推 v* 标签（例如 v1.0.0）→ 构建 + 发 GitHub Release
+#   - 手动触发 → 只构建并上传 artifact（用来试跑流水线，不动 Release）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要构建/重发的 tag（如 v1.0.0）。留空则用默认分支的当前代码'
+        required: false
+        default: ''
+
+# 创建 Release 需要写权限；不留默认权限，避免意外
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-dmg:
+    # macos-26 上默认 Xcode 26.6 —— 与本机开发环境同版本，
+    # 这样"本地验过的"和"CI 产出的"才是同一套工具链。
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 允许 workflow_dispatch 时切到指定 tag
+
+      - name: 工具链存档
+        run: |
+          # 出问题时第一件要问的就是"当时用的是哪套工具链"，先存下来
+          sw_vers
+          uname -m
+          # 固定 Xcode 版本：runner 镜像会滚动更新，不定死就可能某天换了大版本
+          if [ -d /Applications/Xcode_26.6.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.6.app
+          fi
+          xcodebuild -version
+          echo "---"
+          xcrun --show-sdk-version
+
+      - name: 解析版本号
+        id: version
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            echo "既不是 tag 触发、也没填 tag：本次只做构建验证，不发布。"
+            TAG=""
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # 版本号 = tag 去掉开头的 v，这样 app 里显示的和 tag 永远一致
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "解析结果：tag='$TAG'"
+
+      - name: 切到目标 tag（手动重发时）
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
+        run: |
+          # 重发必须构建**那个 tag 当时的代码**，不能拿默认分支的最新代码冒充
+          git fetch --tags --force
+          git checkout "refs/tags/${{ inputs.tag }}"
+
+      - name: 导入签名证书
+        id: import-cert
+        env:
+          CERT_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$CERT_BASE64" ]; then
+            echo "未配置 BUILD_CERTIFICATE_BASE64：将使用 ad-hoc 签名。"
+            echo "（产物可用，但用户首次打开需要手动去除隔离标记）"
+            echo "identity=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 用一个临时钥匙串装证书，任务结束随 runner 一起销毁。
+          # 直接导进默认钥匙串会污染整个 job 的搜索域，还可能干扰后续签名。
+          KEYCHAIN="$RUNNER_TEMP/nbkey-signing.keychain-db"
+          echo "$CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$P12_PASSWORD" -T /usr/bin/codesign
+          # 不设 partition list 的话，codesign 会弹出 GUI 授权框并卡住（CI 上表现为挂死）
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # 自动找出证书身份，省得再让人配一个环境变量（配了反而容易和证书对不上）
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | awk -F'"' '/Developer ID Application/{print $2; exit}')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::钥匙串里没有 Developer ID Application 证书（导出 p12 时选错证书了？）"
+            security find-identity -v -p codesigning "$KEYCHAIN"
+            exit 1
+          fi
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "签名身份：$IDENTITY"
+
+      - name: 准备公证凭据
+        id: notary
+        if: ${{ steps.import-cert.outputs.identity != '' }}
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          if [ -n "$APPLE_API_KEY_P8" ]; then
+            # App Store Connect API Key 方式：更适合 CI（不受双重认证影响）
+            echo "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+            echo "key_path=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_OUTPUT"
+            echo "公证方式：App Store Connect API Key"
+          else
+            echo "key_path=" >> "$GITHUB_OUTPUT"
+            echo "公证方式：Apple ID + App 专用密码（若也没配则跳过公证）"
+          fi
+
+      - name: 构建 / 签名 / 公证 / 打包 DMG
+        env:
+          SIGN_IDENTITY: ${{ steps.import-cert.outputs.identity }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_PATH: ${{ steps.notary.outputs.key_path }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          chmod +x scripts/build-release.sh
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ -z "$VERSION" ]; then
+            # 非 tag 触发（只做构建验证）：用一个明显是临时的版本号，避免误当成正式产物
+            VERSION="0.0.0-dev"
+          fi
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}" \
+            ./scripts/build-release.sh "$VERSION" "$PWD/dist"
+          # 清掉临时 .p8，别让它留在 artifact 里
+          rm -f "$RUNNER_TEMP/notary-key.p8" || true
+
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: dist/xcodebuild-release.log
+          if-no-files-found: ignore
+
+      - name: 上传 DMG
+        if: ${{ steps.version.outputs.version != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: NBKey-${{ steps.version.outputs.version }}
+          path: |
+            dist/NBKey-*.dmg
+            dist/NBKey-*.dmg.sha256
+
+      - name: 发布 GitHub Release
+        if: ${{ steps.version.outputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          NOTES="docs/release-notes/$TAG.md"
+          if [ -f "$NOTES" ]; then
+            NOTES_ARGS=(--notes-file "$NOTES")
+          else
+            echo "::warning::没有 $NOTES，改用自动生成的 commit 摘要（安装说明会缺失）"
+            NOTES_ARGS=(--generate-notes)
+          fi
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # 已存在（重发/补签的常见场景）：覆盖资产，并同步更新说明
+            echo "Release $TAG 已存在，改为覆盖资产"
+            gh release upload "$TAG" --clobber \
+              "dist/NBKey-$VERSION.dmg" "dist/NBKey-$VERSION.dmg.sha256"
+            gh release edit "$TAG" "${NOTES_ARGS[@]}"
+          else
+            gh release create "$TAG" \
+              --title "NBKey $TAG" \
+              "${NOTES_ARGS[@]}" \
+              "dist/NBKey-$VERSION.dmg" "dist/NBKey-$VERSION.dmg.sha256"
+          fi
+          echo "Release 地址：$(gh release view "$TAG" --json url -q .url)"
+
+      - name: 结果汇总
+        if: always()
+        run: |
+          {
+            echo "## NBKey 发布结果"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| tag | \`${{ steps.version.outputs.tag }}\` |"
+            echo "| 版本号 | \`${{ steps.version.outputs.version }}\` |"
+            echo "| 签名身份 | \`${{ steps.import-cert.outputs.identity }}\` |"
+            echo "| Runner | \`${{ runner.os }} / ${{ runner.arch }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          ls -lh dist/ || true
