@@ -72,19 +72,34 @@ can_notarize() {
     return 1
 }
 
+# 凭据参数只在这里组装一次。用数组而不是字符串拼接：密码/邮箱里若出现空格，
+# 字符串会被拆成多个参数，正是那种"偶尔失败一次、极难复现"的问题。
+NOTARY_CREDS=()
+if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+    NOTARY_CREDS=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID")
+else
+    NOTARY_CREDS=(--apple-id "${APPLE_ID:-}" --password "${APPLE_APP_PASSWORD:-}" --team-id "${APPLE_TEAM_ID:-}")
+fi
+
+# 公证并**自诊断**：只报"公证失败"是没用的，notarytool 的真正原因藏在单独的 log 里，
+# 不主动取出来就会变成"CI 挂了但不知道为什么"。所以失败时自动拉 log 再报错。
 notarize() {  # $1 = 待公证文件（.zip 或 .dmg）
-    if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
-        xcrun notarytool submit "$1" \
-            --key "$APPLE_API_KEY_PATH" \
-            --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER_ID" \
-            --wait --timeout 40m
-    else
-        xcrun notarytool submit "$1" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 40m
+    local target="$1" out id status
+    set +e
+    out=$(xcrun notarytool submit "$target" "${NOTARY_CREDS[@]}" \
+            --wait --timeout 40m --output-format json 2>&1)
+    set -e
+    printf '%s\n' "$out" | sed 's/^/    /'
+
+    id=$(printf '%s' "$out" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+    status=$(printf '%s' "$out" | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+
+    if [ "$status" != "Accepted" ]; then
+        if [ -n "$id" ]; then
+            printf '\n\033[1m--- notarytool 详细原因（submission %s）---\033[0m\n' "$id"
+            xcrun notarytool log "$id" "${NOTARY_CREDS[@]}" 2>&1 | sed 's/^/    /' || true
+        fi
+        fail "公证失败：$target（status=${status:-未知}）"
     fi
 }
 
