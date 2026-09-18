@@ -131,8 +131,11 @@ if ! xcodebuild \
 fi
 # 构建日志必须留档：CI 上出问题时，grep 过的摘要远远不够
 info "构建成功（完整日志：$BUILD_LOG）"
-grep -c "warning:" "$BUILD_LOG" | xargs -I{} echo "    编译警告数：{}"
-grep "warning:" "$BUILD_LOG" | grep -v "AppIntents" | head -10 | sed 's/^/      /' || true
+# ⚠️ 末尾的 `|| true` 不能省：`grep -c` 在**零匹配时返回 1**，
+# 而 `set -o pipefail` 会让整条管道返回 1 → `set -e` 直接中止脚本。
+# 也就是说"构建零警告"这个最好的情况反而会让流水线失败。
+info "编译警告数：$(grep -c "warning:" "$BUILD_LOG" || true)"
+grep "warning:" "$BUILD_LOG" 2>/dev/null | grep -v "AppIntents" | head -10 | sed 's/^/      /' || true
 
 [ -d "$APP" ] || fail "构建产物不存在：$APP"
 

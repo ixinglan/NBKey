@@ -97,7 +97,10 @@ jobs:
           # 不设 partition list 的话，codesign 会弹出 GUI 授权框并卡住（CI 上表现为挂死）
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
-          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          # 把临时钥匙串加进搜索域，同时保留原有的（runner 的 login.keychain-db 名字
+          # 不一定叫这个，写死会在 -s 时把别人的钥匙串顶掉甚至报错）
+          EXISTING=$(security list-keychains -d user | sed 's/[",]//g' | tr '\n' ' ')
+          security list-keychains -d user -s "$KEYCHAIN" $EXISTING
           rm -f "$RUNNER_TEMP/cert.p12"
 
           # 自动找出证书身份，省得再让人配一个环境变量（配了反而容易和证书对不上）
