@@ -1,0 +1,278 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1A0000000000000000000020 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000010 /* AppDelegate.swift */; };
+		1A0000000000000000000021 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000011 /* Models.swift */; };
+		1A0000000000000000000022 /* EventTapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000012 /* EventTapEngine.swift */; };
+		1A0000000000000000000023 /* RuleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000013 /* RuleStore.swift */; };
+		1A0000000000000000000024 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000014 /* MenuBarController.swift */; };
+		1A0000000000000000000025 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000015 /* SettingsView.swift */; };
+		1A0000000000000000000026 /* KeyCodes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000016 /* KeyCodes.swift */; };
+		1A0000000000000000000027 /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000017 /* Permissions.swift */; };
+		1A0000000000000000000028 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000018 /* main.swift */; };
+		1A0000000000000000000029 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000019 /* AppState.swift */; };
+		1A000000000000000000002A /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001C /* AppIcon.icns */; };
+		1A000000000000000000002B /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001D /* DesignSystem.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1A0000000000000000000010 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		1A0000000000000000000011 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		1A0000000000000000000012 /* EventTapEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventTapEngine.swift; sourceTree = "<group>"; };
+		1A0000000000000000000013 /* RuleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleStore.swift; sourceTree = "<group>"; };
+		1A0000000000000000000014 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		1A0000000000000000000015 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000016 /* KeyCodes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyCodes.swift; sourceTree = "<group>"; };
+		1A0000000000000000000017 /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
+		1A0000000000000000000018 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		1A0000000000000000000019 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		1A000000000000000000001A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1A000000000000000000001C /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Resources/AppIcon.icns; sourceTree = "<group>"; };
+		1A000000000000000000001D /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		1A000000000000000000001B /* NBKey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NBKey.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1A0000000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1A0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				1A0000000000000000000003 /* KeyLayer */,
+				1A0000000000000000000004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000003 /* KeyLayer */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000000000000000000010,
+				1A0000000000000000000011,
+				1A0000000000000000000012,
+				1A0000000000000000000013,
+				1A0000000000000000000014,
+				1A0000000000000000000015,
+				1A0000000000000000000016,
+				1A0000000000000000000017,
+				1A0000000000000000000018,
+				1A0000000000000000000019,
+				1A000000000000000000001A,
+				1A000000000000000000001C,
+				1A000000000000000000001D,
+			);
+			path = KeyLayer;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1A000000000000000000001B /* NBKey.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1A0000000000000000000005 /* KeyLayer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A000000000000000000000A /* Build configuration list for PBXNativeTarget "KeyLayer" */;
+			buildPhases = (
+				1A0000000000000000000006 /* Sources */,
+				1A0000000000000000000007 /* Frameworks */,
+				1A0000000000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KeyLayer;
+			productName = KeyLayer;
+			productReference = 1A000000000000000000001B /* NBKey.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1A0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 1A0000000000000000000009 /* Build configuration list for PBXProject "KeyLayer" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1A0000000000000000000002;
+			productRefGroup = 1A0000000000000000000004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1A0000000000000000000005 /* KeyLayer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1A0000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A000000000000000000002A /* AppIcon.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1A0000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A0000000000000000000020,
+				1A0000000000000000000021,
+				1A0000000000000000000022,
+				1A0000000000000000000023,
+				1A0000000000000000000024,
+				1A0000000000000000000025,
+				1A0000000000000000000026,
+				1A0000000000000000000027,
+				1A0000000000000000000028,
+				1A0000000000000000000029,
+				1A000000000000000000002B,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1A000000000000000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		1A000000000000000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		1A000000000000000000000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KeyLayer/NBKey.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KeyLayer/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nbkey.NBKey;
+				PRODUCT_NAME = NBKey;
+				SWIFT_VERSION = 5.0;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		1A000000000000000000000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KeyLayer/NBKey.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KeyLayer/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nbkey.NBKey;
+				PRODUCT_NAME = NBKey;
+				SWIFT_VERSION = 5.0;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1A0000000000000000000009 /* Build configuration list for PBXProject "KeyLayer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A000000000000000000000B /* Debug */,
+				1A000000000000000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1A000000000000000000000A /* Build configuration list for PBXNativeTarget "KeyLayer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A000000000000000000000D /* Debug */,
+				1A000000000000000000000E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1A0000000000000000000001 /* Project object */;
+}

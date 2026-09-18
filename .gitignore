@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+._*
+
+# Xcode 构建产物（本机实测 86MB，全部是中间产物）
+build/
+DerivedData/
+*.o
+*.hmap
+*.swiftmodule
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Xcode 用户私有设置：窗口布局、断点、打开的标签页都是"各人各机"的，
+# 进仓库只会制造无意义的冲突
+xcuserdata/
+*.xcuserstate
+
+# 探针编译出来的可执行文件（源码 tools/*_probe.swift 旁边的产物）
+tools/probe*
+tools/udprobe
+tools/uuidprobe
+
+# WorkBuddy 工作记忆：本地开发笔记，含本机绝对路径等只与本机有关的内容。
+# 如果希望把「方案演进/踩坑记录」一并版本化，删掉下面这行即可。
+.workbuddy/

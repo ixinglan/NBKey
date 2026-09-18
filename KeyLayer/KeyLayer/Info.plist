@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>NBKey</string>
+	<key>CFBundleDisplayName</key>
+	<string>NBKey</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.nbkey.NBKey</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleExecutable</key>
+	<string>NBKey</string>
+	<!-- 直接指向 Resources 里的 .icns 文件。
+	     只写 CFBundleIconName（那一项是给「资源目录 asset catalog」用的）而项目并没有 asset catalog，
+	     结果是 Finder 与 NSApp.applicationIconImage 都拿不到图标、回退成系统通用图标
+	     （界面左上角就是一个空白方块）。两个键都留着，兼容两种打包方式。 -->
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 NBKey</string>
+</dict>
+</plist>
