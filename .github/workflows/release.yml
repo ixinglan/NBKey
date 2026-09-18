@@ -35,11 +35,19 @@ jobs:
         with:
           fetch-depth: 0        # 允许 workflow_dispatch 时切到指定 tag
 
+      # 放在最前面、只花 0.2 秒：这类问题一旦漏到后面，代价是整轮构建白跑 + 一次
+      # 「日志里只有一句乱码」的排查。
+      - name: 预检：脚本里"变量紧贴非 ASCII"的写法
+        run: bash scripts/check-shell-encoding.sh
+
       - name: 工具链存档
         run: |
-          # 出问题时第一件要问的就是"当时用的是哪套工具链"，先存下来
+          # 出问题时第一件要问的就是"当时用的是哪套工具链"，先存下来。
+          # bash 版本与区域也要存：它们决定脚本怎么解析，曾经就是这俩造成"本地绿、CI 红"。
           sw_vers
           uname -m
+          bash --version | head -1
+          echo "LANG=${LANG:-<未设置>} LC_ALL=${LC_ALL:-<未设置>}"
           # 固定 Xcode 版本：runner 镜像会滚动更新，不定死就可能某天换了大版本
           if [ -d /Applications/Xcode_26.6.app ]; then
             sudo xcode-select -s /Applications/Xcode_26.6.app
@@ -50,19 +58,32 @@ jobs:
 
       - name: 解析版本号
         id: version
+        env:
+          # 用 github 上下文的 ref_type/ref_name，而不是 shell 里的 GITHUB_REF_TYPE：
+          # 上下文是文档化的、不依赖 runner 注入的环境变量，语义没有歧义。
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            TAG="${GITHUB_REF_NAME}"
+          set -euo pipefail
+          if [ -n "${INPUT_TAG}" ]; then
+            TAG="${INPUT_TAG}"
+          elif [ "${REF_TYPE}" = "tag" ]; then
+            TAG="${REF_NAME}"
           else
             echo "既不是 tag 触发、也没填 tag：本次只做构建验证，不发布。"
             TAG=""
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # tag 事件却没解析出 tag，说明解析逻辑坏了。宁可立刻失败，
+          # 也不要悄悄用 0.0.0-dev 去构建、最后发一个版本号错误的包。
+          if [ "${REF_TYPE}" = "tag" ] && [ -z "${TAG}" ]; then
+            echo "::error::本次是 tag 触发，但没解析出 tag 名，已中止"
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           # 版本号 = tag 去掉开头的 v，这样 app 里显示的和 tag 永远一致
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          echo "解析结果：tag='$TAG'"
+          echo "解析结果：事件=${REF_TYPE} ref=${REF_NAME} → tag='${TAG}'"
 
       - name: 切到目标 tag（手动重发时）
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
@@ -80,8 +101,9 @@ jobs:
         run: |
           if [ -z "$CERT_BASE64" ]; then
             echo "未配置 BUILD_CERTIFICATE_BASE64：将使用 ad-hoc 签名。"
-            echo "（产物可用，但用户首次打开需要手动去除隔离标记）"
+            echo "（产物可用，但用户首次打开需要手动去除隔离标记；且不会发布 Release）"
             echo "identity=" >> "$GITHUB_OUTPUT"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -112,11 +134,12 @@ jobs:
             exit 1
           fi
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
           echo "签名身份：$IDENTITY"
 
       - name: 准备公证凭据
         id: notary
-        if: ${{ steps.import-cert.outputs.identity != '' }}
+        if: ${{ steps.import-cert.outputs.signed == 'true' }}
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -126,13 +149,21 @@ jobs:
             # App Store Connect API Key 方式：更适合 CI（不受双重认证影响）
             echo "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
             echo "key_path=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_OUTPUT"
+            echo "notary=App Store Connect API Key" >> "$GITHUB_OUTPUT"
             echo "公证方式：App Store Connect API Key"
           else
             echo "key_path=" >> "$GITHUB_OUTPUT"
-            echo "公证方式：Apple ID + App 专用密码（若也没配则跳过公证）"
+            if [ -n "${{ secrets.APPLE_ID }}" ] && [ -n "${{ secrets.APPLE_APP_PASSWORD }}" ]; then
+              echo "notary=Apple ID" >> "$GITHUB_OUTPUT"
+              echo "公证方式：Apple ID + App 专用密码"
+            else
+              echo "notary=无凭据（跳过公证）" >> "$GITHUB_OUTPUT"
+              echo "::warning::既没有 API Key 也没有 Apple ID/专用密码，本次会签名但不公证"
+            fi
           fi
 
       - name: 构建 / 签名 / 公证 / 打包 DMG
+        id: build
         env:
           SIGN_IDENTITY: ${{ steps.import-cert.outputs.identity }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -147,7 +178,9 @@ jobs:
           if [ -z "$VERSION" ]; then
             # 非 tag 触发（只做构建验证）：用一个明显是临时的版本号，避免误当成正式产物
             VERSION="0.0.0-dev"
+            echo "::warning::没解析到 tag，本次只做构建验证，产物版本号为 ${VERSION}"
           fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           BUILD_NUMBER="${GITHUB_RUN_NUMBER}" \
             ./scripts/build-release.sh "$VERSION" "$PWD/dist"
           # 清掉临时 .p8，别让它留在 artifact 里
@@ -162,16 +195,16 @@ jobs:
           if-no-files-found: ignore
 
       - name: 上传 DMG
-        if: ${{ steps.version.outputs.version != '' }}
+        if: ${{ steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: NBKey-${{ steps.version.outputs.version }}
+          name: NBKey-${{ steps.build.outputs.version }}
           path: |
             dist/NBKey-*.dmg
             dist/NBKey-*.dmg.sha256
 
       - name: 发布 GitHub Release
-        if: ${{ steps.version.outputs.tag != '' }}
+        if: ${{ steps.version.outputs.tag != '' && steps.import-cert.outputs.signed == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -182,7 +215,7 @@ jobs:
           if [ -f "$NOTES" ]; then
             NOTES_ARGS=(--notes-file "$NOTES")
           else
-            echo "::warning::没有 $NOTES，改用自动生成的 commit 摘要（安装说明会缺失）"
+            echo "::warning::没有 ${NOTES}，改用自动生成的 commit 摘要（安装说明会缺失）"
             NOTES_ARGS=(--generate-notes)
           fi
 
@@ -200,6 +233,23 @@ jobs:
           fi
           echo "Release 地址：$(gh release view "$TAG" --json url -q .url)"
 
+      # 有意为之的门禁：ad-hoc 签名的包用户下载后要手动去隔离，
+      # 不该作为"正式版本"发出去。宁可不发，也不发一个双击打不开的 v1.0.0。
+      - name: 未签名：跳过发布 Release
+        if: ${{ steps.version.outputs.tag != '' && steps.import-cert.outputs.signed != 'true' }}
+        run: |
+          echo "::warning::产物是 ad-hoc 签名（没读到 BUILD_CERTIFICATE_BASE64），已跳过发布 Release。"
+          {
+            echo "### ⚠️ 已跳过发布 Release"
+            echo ""
+            echo "原因：没有读到 BUILD_CERTIFICATE_BASE64，本次产物是 ad-hoc 签名，"
+            echo "用户下载后需要手动执行 xattr 才能打开，不适合作为正式版本。"
+            echo ""
+            echo "处理：在**本仓库**配置好 6 个 Secrets 后，手动触发本工作流并填上 tag 即可重发"
+            echo "（Release 不存在则新建，已存在则 --clobber 覆盖资产）。"
+            echo "配好后可用 gh secret list -R ixinglan/NBKey 核对（应看到 6 个）。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 结果汇总
         if: always()
         run: |
@@ -209,8 +259,10 @@ jobs:
             echo "| 项 | 值 |"
             echo "| --- | --- |"
             echo "| tag | \`${{ steps.version.outputs.tag }}\` |"
-            echo "| 版本号 | \`${{ steps.version.outputs.version }}\` |"
+            echo "| 版本号 | \`${{ steps.build.outputs.version }}\` |"
             echo "| 签名身份 | \`${{ steps.import-cert.outputs.identity }}\` |"
+            echo "| 公证 | ${{ steps.notary.outputs.notary || '—' }} |"
+            echo "| 触发事件 | \`${{ github.event_name }}\` |"
             echo "| Runner | \`${{ runner.os }} / ${{ runner.arch }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
           ls -lh dist/ || true

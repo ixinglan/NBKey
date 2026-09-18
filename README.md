@@ -511,7 +511,7 @@ git tag v1.0.0 && git push origin v1.0.0
 ### 流水线做了什么
 
 `.github/workflows/release.yml` 在 **`macos-26`** runner 上跑（默认 Xcode 26.6，与本机同版本），
-步骤：检出 → 存档工具链信息 → 解析版本号 → 导入证书 → 准备公证凭据 →
+步骤：检出 → 脚本编码预检 → 存档工具链信息 → 解析版本号 → 导入证书 → 准备公证凭据 →
 调用 `scripts/build-release.sh` → 上传 artifact → 创建/更新 Release。
 
 几个刻意的选择：
@@ -523,10 +523,13 @@ git tag v1.0.0 && git push origin v1.0.0
 - **App 与 DMG 都公证 + staple**：只公证 DMG 的话，用户把 app 拖出来之后那张票据并不跟随，
   离线环境下 Gatekeeper 仍会拦。
 - **用系统自带 `hdiutil` 而不是 `create-dmg`**：少一个 brew 依赖、少一两分钟，换来确定性。
+- **没签名就不发 Release**：读不到 `BUILD_CERTIFICATE_BASE64` 时照常构建、上传 DMG artifact，
+  但**跳过创建 Release** —— ad-hoc 包用户下载后要手动 `xattr` 去隔离，不该当正式版发出去。
+- **构建前先跑脚本编码预检**（`scripts/check-shell-encoding.sh`，0.2 秒）：见下面「踩过的坑」。
 
 ### 需要配置的 Secrets
 
-不配也能跑（自动降级为 ad-hoc 签名），但产物会带 Gatekeeper 警告。配齐后双击即开：
+不配也能跑（自动降级为 ad-hoc 签名 + 不创建 Release）。配齐后产物双击即开：
 
 | Secret | 说明 |
 | --- | --- |
@@ -537,25 +540,66 @@ git tag v1.0.0 && git push origin v1.0.0
 | `APPLE_APP_PASSWORD` | [appleid.apple.com](https://appleid.apple.com) 生成的 App 专用密码 |
 | `APPLE_TEAM_ID` | 团队 ID（本仓库为 `3RW8JYPKDG`） |
 
-<details>
-<summary>导出 p12 与生成 base64 的命令</summary>
+> **⚠️ 别配错仓库。** Secrets 是**仓库级**的：配在别的仓库（比如 `ixinglan/CrossTerminal`）里，
+> 本仓库一点都读不到 —— 流水线里 `CERT_BASE64` 会是空字符串，然后**静默**降级成 ad-hoc 签名，
+> 只在日志里留一句"未配置 BUILD_CERTIFICATE_BASE64"。配完务必核对一次：
+>
+> ```bash
+> gh secret list -R ixinglan/NBKey    # 应该看到 6 个
+> ```
+
+用 gh CLI 配（比在网页上点选更不容易配错仓库）：
 
 ```bash
-# 1. 从钥匙串导出 Developer ID Application 证书（含私钥）
-#    图形界面：钥匙串访问 → 我的证书 → 右键「Developer ID Application: …」→ 导出 → 存为 .p12 并设密码
-#    命令行（会提示输入钥匙串密码）：
-security export -t identities -f pkcs12 -P '<p12密码>' \
-  -o /tmp/nbkey-devid.p12
+R=ixinglan/NBKey
 
-# 2. base64 编码后粘到 GitHub Secrets
-base64 -i /tmp/nbkey-devid.p12 | pbcopy
-rm -P /tmp/nbkey-devid.p12   # 用完立刻销毁，别留在磁盘上
+# 1) 导出 Developer ID 证书（含私钥）。**指定证书名**，否则会把 Apple Development /
+#    Apple Distribution 一起导进去。全名用下面这条查：
+#      security find-identity -v -p codesigning
+security export -t identities -f pkcs12 -P '<给p12设的密码>' \
+  -o /tmp/nbkey-devid.p12 \
+  "Developer ID Application: jianqiang zhao (3RW8JYPKDG)"
+
+# 2) 写入 6 个 Secret（不加 -b 会交互式读取输入，粘进去即可；值不会回显）
+gh secret set BUILD_CERTIFICATE_BASE64 -R "$R" -b "$(base64 -i /tmp/nbkey-devid.p12)"
+gh secret set P12_PASSWORD            -R "$R"   # 上一步 p12 的密码
+gh secret set KEYCHAIN_PASSWORD       -R "$R"   # 任意随机串，仅 CI 临时钥匙串用
+gh secret set APPLE_ID                -R "$R"
+gh secret set APPLE_APP_PASSWORD      -R "$R"   # App 专用密码
+gh secret set APPLE_TEAM_ID           -R "$R" -b 3RW8JYPKDG
+
+# 3) 核对，然后销毁本地私钥
+gh secret list -R "$R"
+rm -P /tmp/nbkey-devid.p12
 ```
 
-也可以用 App Store Connect API Key 代替 Apple ID 那三项：
-`APPLE_API_KEY_P8`（.p8 文件 base64）、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER_ID`。
+<details>
+<summary>也可以改用 App Store Connect API Key（不受双重认证影响）</summary>
+
+用这三项代替 `APPLE_ID` / `APPLE_APP_PASSWORD` / `APPLE_TEAM_ID`（签名证书那三项仍然需要）：
+
+- `APPLE_API_KEY_P8`（`.p8` 文件 base64 后的内容）
+- `APPLE_API_KEY_ID`
+- `APPLE_API_ISSUER_ID`
 
 </details>
+
+### 踩过的坑：变量后面紧跟中文标点
+
+`scripts/build-release.sh` 里有一处 `step "1/7 构建（Release, $ARCHS）"` —— 变量 `$ARCHS`
+后面**直接跟了一个全角右括号**。在 **UTF-8 区域**下 bash 会把那个多字节标点吞进变量名，
+于是去找一个叫 `ARCHS）` 的变量；配合 `set -u` 就是一句 `unbound variable` 直接把脚本中止在那一行。
+
+阴险的地方在于：**本机 shell 默认没有 `LANG`/`LC_*`（C 区域）时完全正常**，
+而 CI runner 会给步骤注入 UTF-8 区域 —— 本地跑一百遍都不会重现，
+症状还只是日志里一句乱码（曾经整个 run 只花 18 秒就"红"了，看着像哪一步都没跑）。
+
+修法是给变量加花括号明确边界（`${ARCHS}）`）或把变量挪到句尾；另外补了
+`scripts/check-shell-encoding.sh` 做静态扫描，CI 每次构建前先跑它，让这类写法进不了主干。
+
+> 同一批修掉的还有一个孪生问题：脚本最后那行 `AUTHORITY=$(codesign -dvvv … | grep '^Authority' …)`。
+> ad-hoc 签名**没有 `Authority=` 行**，`grep` 零匹配返回 1，`set -o pipefail` 会让脚本在
+> **已经成功产出 DMG 之后**把整条流水线判为失败。判据用退出码，所以这种"假失败"同样致命。
 
 ### 重发同一个版本
 

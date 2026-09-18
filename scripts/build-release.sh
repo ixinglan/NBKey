@@ -23,6 +23,15 @@
 #   APPLE_API_KEY_PATH / APPLE_API_KEY_ID / APPLE_API_ISSUER_ID
 #                      App Store Connect API Key 方式的公证凭据（优先于上面那组）
 #
+# ⚠️ 本文件有一条硬约束：**变量后面不能紧跟非 ASCII 字符**（中文标点等）。
+#   原因：把变量写在双引号里、后面**直接跟**一个中文标点时，UTF-8 区域下的 bash
+#   会把那个多字节标点当成变量名的一部分，于是去找一个"名字里带全角括号"的变量；
+#   配合 `set -u` 就是 `ARCHS<乱码>: unbound variable` 直接中止脚本。
+#   而本机 shell 没有设置 LANG/LC_*（C 区域），同样的代码**永远跑不出这个错**
+#   —— 典型的"本地全绿、CI 必红"。
+#   正确写法：用花括号明确边界，或干脆把变量挪到句尾。
+#   防复发：scripts/check-shell-encoding.sh 会静态扫描这个模式，CI 每次都会先跑它。
+#
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -58,7 +67,18 @@ fi
 
 step()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 info()  { printf '    %s\n' "$*"; }
-fail()  { printf '\n\033[31m❌ %s\033[0m\n' "$*" >&2; exit 1; }
+
+# fail() 是"有意的失败"，先做个记号，免得下面的 ERR 陷阱再补一刀、把日志搅乱。
+__intentional_fail=0
+fail()  { __intentional_fail=1; printf '\n\033[31m❌ %s\033[0m\n' "$*" >&2; exit 1; }
+
+# 出错时把"第几行、哪条命令"打出来。
+# 起因：CI 上曾在第 120 行静默死掉，日志里只有一句 `ARCHS<乱码>: unbound variable`，
+# 既不知道是哪一行，也不知道当时在干什么，排查成本极高。加上这个陷阱后，
+# 任何一处失败都会带上下文，不用再去猜。
+trap 'rc=$?; if [ "$__intentional_fail" = 0 ]; then
+    printf "\n\033[31m❌ 脚本在第 %s 行失败（退出码 %s）\033[0m\n    失败命令：%s\n" "$LINENO" "$rc" "$BASH_COMMAND" >&2
+fi' ERR
 
 # 公证凭据齐不齐（两种方式取其一）。
 can_notarize() {
@@ -99,7 +119,7 @@ notarize() {  # $1 = 待公证文件（.zip 或 .dmg）
             printf '\n\033[1m--- notarytool 详细原因（submission %s）---\033[0m\n' "$id"
             xcrun notarytool log "$id" "${NOTARY_CREDS[@]}" 2>&1 | sed 's/^/    /' || true
         fi
-        fail "公证失败：$target（status=${status:-未知}）"
+        fail "公证失败：${target}（status=${status:-未知}）"
     fi
 }
 
@@ -107,6 +127,8 @@ mkdir -p "$OUT_DIR"
 rm -f "$DMG" "$DMG.sha256"
 
 echo "NBKey 发布流水线"
+# 把 shell 版本和区域也打出来：这两个值决定了脚本怎么解析，曾经就是它们造成"本地绿、CI 红"
+info "shell      : bash $BASH_VERSION / LANG=${LANG:-<未设置>} LC_ALL=${LC_ALL:-<未设置>}"
 info "版本号     : $VERSION (build $BUILD_NUMBER)"
 info "架构       : $ARCHS"
 info "签名身份   : $SIGN_IDENTITY"
@@ -117,7 +139,7 @@ info "公证       : $(can_notarize && echo '会执行' || echo '跳过（无凭
 # 1. 构建
 # ---------------------------------------------------------------------------
 
-step "1/7 构建（Release, $ARCHS）"
+step "1/7 构建（Release, ${ARCHS}）"
 
 # 先删掉旧产物。不删的话，万一这次构建失败、而上次的 app 还躺在原地，
 # 后面的步骤会**拿旧包继续往下走**，最终发布一个"看起来成功"的过期版本。
@@ -145,7 +167,7 @@ if ! xcodebuild \
     fail "xcodebuild 失败，完整日志见 $BUILD_LOG"
 fi
 # 构建日志必须留档：CI 上出问题时，grep 过的摘要远远不够
-info "构建成功（完整日志：$BUILD_LOG）"
+info "构建成功（完整日志：${BUILD_LOG}）"
 # ⚠️ 末尾的 `|| true` 不能省：`grep -c` 在**零匹配时返回 1**，
 # 而 `set -o pipefail` 会让整条管道返回 1 → `set -e` 直接中止脚本。
 # 也就是说"构建零警告"这个最好的情况反而会让流水线失败。
@@ -165,8 +187,8 @@ step "2/7 校验产物"
 PLIST="$APP/Contents/Info.plist"
 GOT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
 GOT_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
-[ "$GOT_VERSION" = "$VERSION" ] || fail "版本号注入失败：期望 $VERSION，产物里是 $GOT_VERSION"
-[ "$GOT_BUILD" = "$BUILD_NUMBER" ] || fail "构建号注入失败：期望 $BUILD_NUMBER，产物里是 $GOT_BUILD"
+[ "$GOT_VERSION" = "$VERSION" ] || fail "版本号注入失败：期望 ${VERSION}，产物里是 $GOT_VERSION"
+[ "$GOT_BUILD" = "$BUILD_NUMBER" ] || fail "构建号注入失败：期望 ${BUILD_NUMBER}，产物里是 $GOT_BUILD"
 info "版本号注入正确：$GOT_VERSION ($GOT_BUILD)"
 
 ARCH_INFO=$(lipo -archs "$APP/Contents/MacOS/NBKey")
@@ -174,7 +196,7 @@ info "实际架构：$ARCH_INFO"
 for want in $ARCHS; do
     case " $ARCH_INFO " in
         *" $want "*) ;;
-        *) fail "缺少架构切片：$want（实际 $ARCH_INFO）" ;;
+        *) fail "缺少架构切片：${want}（实际 ${ARCH_INFO}）" ;;
     esac
 done
 info "架构切片齐全"
@@ -323,8 +345,11 @@ fi
 # ---------------------------------------------------------------------------
 
 step "7/7 完成"
-# 注意 `codesign -dv` 是**不打印 Authority 的**（那是 -dvvv），只看 -dv 会以为没签上名
-AUTHORITY=$(codesign -dvvv "$APP" 2>&1 | grep '^Authority' | head -1 | sed 's/^Authority=//')
+# 注意 `codesign -dv` 是**不打印 Authority 的**（那是 -dvvv），只看 -dv 会以为没签上名。
+# ⚠️ 末尾的 `|| true` 不能省：ad-hoc 签名**没有 Authority 行**，grep 零匹配返回 1，
+# 配合 `set -o pipefail` + `set -e`，会把"已经成功产出 DMG"的整条流水线判为失败
+# （真实发生过：ad-hoc 全流程跑到 7/7，退出码却是 1，产物没问题但 CI 报红）。
+AUTHORITY=$(codesign -dvvv "$APP" 2>&1 | grep '^Authority' | head -1 | sed 's/^Authority=//' || true)
 info "DMG    : $DMG"
 info "SHA256 : $DMG.sha256"
 info "签名   : ${AUTHORITY:-ad-hoc（无证书）}"
